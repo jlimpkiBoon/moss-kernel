@@ -95,6 +95,10 @@ use libkernel::{
     error::{KernelError, syscall_error::kern_err_to_syscall},
     memory::address::{TUA, UA, VA},
 };
+use core::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
+use log::info;
+
+static LAST_SYSCALL_NR: AtomicU32 = AtomicU32::new(0);
 
 pub async fn handle_syscall() {
     current_task().update_accounting(None);
@@ -117,6 +121,9 @@ pub async fn handle_syscall() {
             state.x[5],
         )
     };
+
+    let previous_nr = LAST_SYSCALL_NR.swap(nr, AtomicOrdering::Relaxed);
+
 
     let res = match nr {
         0x5 => {
@@ -433,6 +440,12 @@ pub async fn handle_syscall() {
             )
             .await
         }
+
+        0x74 => {
+            info!("previous syscall number: 0x{:x}", previous_nr);
+            Ok(0)
+        }
+
         0x75 => {
             sys_ptrace(
                 arg1 as _,
