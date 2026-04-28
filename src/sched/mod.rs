@@ -274,7 +274,7 @@ impl SchedState {
             //
             // We are currently idling, OR The new task has an earlier deadline
             // than the current task.
-            if current.is_idle_task() || new_task.v_deadline < current.v_deadline {
+            if current.is_idle_task() {
                 self.force_resched = true;
             }
         }

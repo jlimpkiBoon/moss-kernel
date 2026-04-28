@@ -75,19 +75,8 @@ impl SchedulableTask {
         // Advance its eligible time by the virtual run time it just used
         // (EEVDF: v_ei += t_used / w_i).
         self.v_eligible = self.v_eligible.saturating_add(dv_increment);
-
         self.exec_start = Some(now);
-
-        // Has the task exceeded its deadline?
-        if self.v_eligible >= self.v_deadline {
-            self.replenish_deadline();
-
-            true
-        } else {
-            // Task still has budget. Do nothing. Return to userspace
-            // immediately.
-            false
-        }
+        self.v_runtime % 3 == 0
     }
 
     /// Compute this task's scheduling weight.
@@ -100,27 +89,22 @@ impl SchedulableTask {
     }
 
     pub fn compare_with(&self, other: &Self) -> core::cmp::Ordering {
-        if self.is_idle_task() {
-            return Ordering::Greater;
-        }
+    if self.is_idle_task() {
+        return Ordering::Greater;
+    }
 
-        if other.is_idle_task() {
-            return Ordering::Less;
-        }
+    if other.is_idle_task() {
+        return Ordering::Less;
+    }
 
-        self.v_deadline
-            .cmp(&other.v_deadline)
-            .then_with(|| self.v_runtime.cmp(&other.v_runtime))
-            // If completely equal, prefer the one that hasn't run in a while?
-            // Or prefer the one already running to avoid cache thrashing?
-            // Usually irrelevant for EEVDF but strict ordering is good for
-            // stability.
-            .then_with(|| match (self.last_run, other.last_run) {
-                (Some(a), Some(b)) => a.cmp(&b),
-                (Some(_), None) => Ordering::Less,
-                (None, Some(_)) => Ordering::Greater,
-                (None, None) => Ordering::Equal,
-            })
+    match (self.last_run, other.last_run) {
+        (None, None) => self.descriptor().cmp(&other.descriptor()),
+        (None, Some(_)) => Ordering::Less,
+        (Some(_), None) => Ordering::Greater,
+        (Some(a), Some(b)) => a
+            .cmp(&b)
+            .then_with(|| self.descriptor().cmp(&other.descriptor())),
+    }
     }
 
     /// Update accounting information when the task is about to be inserted into
