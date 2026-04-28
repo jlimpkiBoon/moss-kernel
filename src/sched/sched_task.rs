@@ -89,22 +89,22 @@ impl SchedulableTask {
     }
 
     pub fn compare_with(&self, other: &Self) -> core::cmp::Ordering {
-    if self.is_idle_task() {
-        return Ordering::Greater;
-    }
+        if self.is_idle_task() {
+            return Ordering::Greater;
+        }
 
-    if other.is_idle_task() {
-        return Ordering::Less;
-    }
+        if other.is_idle_task() {
+            return Ordering::Less;
+        }
 
-    match (self.last_run, other.last_run) {
-        (None, None) => self.descriptor().cmp(&other.descriptor()),
-        (None, Some(_)) => Ordering::Less,
-        (Some(_), None) => Ordering::Greater,
-        (Some(a), Some(b)) => a
-            .cmp(&b)
-            .then_with(|| self.descriptor().cmp(&other.descriptor())),
-    }
+        match (self.last_run, other.last_run) {
+            (None, None) => self.descriptor().cmp(&other.descriptor()),
+            (None, Some(_)) => Ordering::Less,
+            (Some(_), None) => Ordering::Greater,
+            (Some(a), Some(b)) => a
+                .cmp(&b)
+                .then_with(|| self.descriptor().cmp(&other.descriptor())),
+        }
     }
 
     /// Update accounting information when the task is about to be inserted into
@@ -125,16 +125,9 @@ impl SchedulableTask {
     /// Setup task accounting info such that it is about to be executed.
     pub fn about_to_execute(&mut self, now: Instant) {
         self.exec_start = Some(now);
+        self.last_run = Some(now);
+
         *self.last_cpu.lock_save_irq() = CpuId::this();
         *self.state.lock_save_irq() = TaskState::Running;
-
-        // Deadline logic
-        if self.deadline.is_none_or(|d| d <= now + DEFAULT_TIME_SLICE) {
-            self.deadline = Some(now + DEFAULT_TIME_SLICE);
-        }
-
-        if let Some(d) = self.deadline {
-            schedule_preempt(d);
-        }
     }
 }
