@@ -95,10 +95,13 @@ use libkernel::{
     error::{KernelError, syscall_error::kern_err_to_syscall},
     memory::address::{TUA, UA, VA},
 };
-use core::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
+use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering as AtomicOrdering};
 use log::info;
 
-static LAST_SYSCALL_NR: AtomicU32 = AtomicU32::new(0);
+const RING_SIZE: usize = 32;
+
+static SYSCALL_LOG: [AtomicU32; RING_SIZE] = [const { AtomicU32::new(0) }; RING_SIZE];
+static LOG_INDEX: AtomicUsize = AtomicUsize::new(0);
 
 pub async fn handle_syscall() {
     current_task().update_accounting(None);
@@ -122,8 +125,8 @@ pub async fn handle_syscall() {
         )
     };
 
-    let previous_nr = LAST_SYSCALL_NR.swap(nr, AtomicOrdering::Relaxed);
-
+    let idx = LOG_INDEX.fetch_add(1, AtomicOrdering::Relaxed) % RING_SIZE;
+    SYSCALL_LOG[idx].store(nr, AtomicOrdering::Relaxed);
 
     let res = match nr {
         0x5 => {
@@ -442,7 +445,20 @@ pub async fn handle_syscall() {
         }
 
         0x74 => {
-            info!("previous syscall number: 0x{:x}", previous_nr);
+            let count = LOG_INDEX.load(AtomicOrdering::Relaxed);
+
+            let start = if count > RING_SIZE {
+                count - RING_SIZE
+            } else {
+                0
+            };
+
+            for i in start..count {
+                let idx = i % RING_SIZE;
+                let val = SYSCALL_LOG[idx].load(AtomicOrdering::Relaxed);
+                info!("history syscall: 0x{:x}", val);
+            }
+
             Ok(0)
         }
 
